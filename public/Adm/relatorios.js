@@ -152,7 +152,7 @@ export function initRelatoriosTab() {
             : 0;
 
       const forma = v.pagamentoForma || "";
-      const raclub = v?.raclub?.status === "membro";
+      const jtclub = v?.jtclub?.status === "membro";
       const servicoNome = v.servicoNome || v.servico || "";
 
       rows.push({
@@ -165,7 +165,7 @@ export function initRelatoriosTab() {
         telefone,
         valor,
         pagamentoForma: forma,
-        raclub,
+        jtclub,
         bloqueado,
         servico: servicoNome || "Serviço",
       });
@@ -200,8 +200,8 @@ export function initRelatoriosTab() {
     return rows.filter((r) => {
       const hasClient = !!(r.clienteNome && r.clienteNome !== "—");
       if (r.bloqueado && !hasClient) return false;
-      if (grupo === "membros") return r.raclub === true;
-      if (grupo === "nao-membros") return r.raclub !== true;
+      if (grupo === "membros") return r.jtclub === true;
+      if (grupo === "nao-membros") return r.jtclub !== true;
       return true;
     });
   }
@@ -259,7 +259,7 @@ export function initRelatoriosTab() {
     let qtdM = 0, qtdN = 0;
     let valM = 0, valN = 0;
     rows.forEach((r) => {
-      if (r.raclub) {
+      if (r.jtclub) {
         qtdM++; valM += Number(r.valor) || 0;
       } else {
         qtdN++; valN += Number(r.valor) || 0;
@@ -644,7 +644,7 @@ export function initRelatoriosTab() {
         (r.servico || "").replaceAll(";", ","),
         paymentMethodLabel(r.pagamentoForma || "").replaceAll(";", ","),
         String(Number(r.valor || 0)).replace(".", ","),
-        r.raclub ? "SIM" : "NAO",
+        r.jtclub ? "SIM" : "NAO",
       ];
       lines.push(line.join(";"));
     });

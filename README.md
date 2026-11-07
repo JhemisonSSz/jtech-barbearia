@@ -66,7 +66,7 @@ jtech-barbearia/
 | `profissionais` | nome, foto, WhatsApp e a coleção de reservas de cada um | todos | admin |
 | `reservas_<profissional>` | cada agendamento, **com nome e telefone do cliente** | **só o admin** | o site **cria** e o admin altera |
 | `horarios_ocupados` | só profissional, data, hora e duração | todos | o site cria (junto com a reserva) e o admin altera |
-| demais (`raclub_clients`, `vendas`, `despesas`...) | dados do painel | admin | admin |
+| demais (`jtclub_clients`, `vendas`, `despesas`...) | dados do painel | admin | admin |
 
 ### Por que existe `horarios_ocupados`
 

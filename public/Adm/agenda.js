@@ -372,7 +372,7 @@ export function initAgendaTab() {
                     : 0;
 
             const forma = v.pagamentoForma || "";
-            const raclub = v?.raclub?.status === "membro";
+            const jtclub = v?.jtclub?.status === "membro";
             const bloqueado = !!v.bloqueado;
             const servicoNome = v.servicoNome || "";
             const telefone = v.clienteTelefone || v.telefoneCliente || v.phone || v.telefone || "";
@@ -387,7 +387,7 @@ export function initAgendaTab() {
                 telefone,
                 valor,
                 pagamentoForma: forma,
-                raclub,
+                jtclub,
                 bloqueado,
                 servico: servicoNome || "Serviço",
                 tempoMin,
@@ -619,7 +619,7 @@ export function initAgendaTab() {
                             </div>
                             <div>${escapeHtml(a.servico)}${durLabel}</div>
                             <div>${(Number(a.valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} • ${escapeHtml(paymentMethodLabel(a.pagamentoForma || "Forma não informada"))}</div>
-                            ${a.raclub ? `<span class="timeslot-badge">JT Club</span>` : ""}
+                            ${a.jtclub ? `<span class="timeslot-badge">JT Club</span>` : ""}
                             <div class="timeslot-note">
                                 Ocupa: ${escapeHtml(occ.apptStartHH)}–${escapeHtml(occ.apptEndHH)}
                             </div>
@@ -821,7 +821,7 @@ export function initAgendaTab() {
                         </select>
                     </div>
                     <div class="field">
-                        <label><input id="newRaclub" type="checkbox" /> Cliente é do JT Club</label>
+                        <label><input id="newJtclub" type="checkbox" /> Cliente é do JT Club</label>
                     </div>
                 </div>
             `,
@@ -841,7 +841,7 @@ export function initAgendaTab() {
                         const servico = ($("#newServico")?.value || "").trim() || "Serviço";
                         const valor = Number($("#newValor")?.value || 0);
                         const forma = $("#newForma")?.value || "Outro";
-                        const raclub = !!$("#newRaclub")?.checked;
+                        const jtclub = !!$("#newJtclub")?.checked;
                         const tempoMin = Number($("#newTempoMin")?.value || getStepMin()) || getStepMin();
 
                         try {
@@ -894,7 +894,7 @@ export function initAgendaTab() {
                                     servicoTempoMin: tempoMin,
                                     valor: Number.isNaN(valor) ? 0 : valor,
                                     pagamentoForma: forma,
-                                    raclub: { status: raclub ? "membro" : "nao" },
+                                    jtclub: { status: jtclub ? "membro" : "nao" },
                                     bloqueado: false,
                                     updatedAt: serverTimestamp(),
                                     createdAt: serverTimestamp(),
@@ -998,7 +998,7 @@ export function initAgendaTab() {
                         </div>
                         <div class="field">
                             <label>
-                                <input id="editRaclub" type="checkbox" ${v?.raclub?.status === "membro" ? "checked" : ""}/>
+                                <input id="editJtclub" type="checkbox" ${v?.jtclub?.status === "membro" ? "checked" : ""}/>
                                 Cliente é do JT Club
                             </label>
                         </div>
@@ -1023,7 +1023,7 @@ export function initAgendaTab() {
                             const servico = ($("#editServico")?.value || "").trim() || "Serviço";
                             const valor = Number($("#editValor")?.value || 0);
                             const forma = $("#editForma")?.value || "Outro";
-                            const raclub = !!$("#editRaclub")?.checked;
+                            const jtclub = !!$("#editJtclub")?.checked;
                             const tempoMin = Number($("#editTempoMin")?.value || getStepMin()) || getStepMin();
                             const ymd = dataFiltro?.value || v.data || "";
                             const startHH = (v.hora || "").trim();
@@ -1080,7 +1080,7 @@ export function initAgendaTab() {
                                 servicoTempoMin: tempoMin,
                                 valor: Number.isNaN(valor) ? 0 : valor,
                                 pagamentoForma: forma,
-                                raclub: { status: raclub ? "membro" : "nao" },
+                                jtclub: { status: jtclub ? "membro" : "nao" },
                                 bloqueado: false,
                                 updatedAt: serverTimestamp(),
                             };

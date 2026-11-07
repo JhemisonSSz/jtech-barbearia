@@ -9,11 +9,11 @@ export function initClientesTab() {
   const cliNome = $("#cliNome");
   const cliSobrenome = $("#cliSobrenome");
   const cliTelefone = $("#cliTelefone");
-  const cliRaclub = $("#cliRaclub");
+  const cliJtclub = $("#cliJtclub");
   const cliSalvarBtn = $("#cliSalvarBtn");
   const cliLimparBtn = $("#cliLimparBtn");
   const clientesTbody = $("#clientesTbody");
-  const raclubPayTbody = $("#raclubPayTbody");
+  const jtclubPayTbody = $("#jtclubPayTbody");
 
   if (!clientesTbody) return;
 
@@ -39,7 +39,7 @@ export function initClientesTab() {
     if (cliNome) cliNome.value = "";
     if (cliSobrenome) cliSobrenome.value = "";
     if (cliTelefone) cliTelefone.value = "";
-    if (cliRaclub) cliRaclub.value = "nao";
+    if (cliJtclub) cliJtclub.value = "nao";
     cliNome?.focus();
   }
 
@@ -54,11 +54,9 @@ export function initClientesTab() {
     const telefone = (v.telefone || v.phone || "").trim();
 
     const membro =
-      v.raclub === "membro" ||
-      v.raClub === "membro" ||
-      v.plano === "ra_club" ||
+      v.jtclub === "membro" ||
+      v.plano === "jt_club" ||
       v.type === "plano_jc" ||
-      v.type === "plano_ra" ||
       v.isPlan === true;
 
     const status = v.status || v.situacao || (membro ? "ativo" : "nao_membro");
@@ -70,7 +68,7 @@ export function initClientesTab() {
       sobrenome,
       nomeCompleto,
       telefone,
-      raclub: membro ? "membro" : "nao",
+      jtclub: membro ? "membro" : "nao",
       status,
       valorMensal
     };
@@ -90,8 +88,8 @@ export function initClientesTab() {
 
     clientesTbody.innerHTML = rows
       .map((c) => {
-        const raclubLabel =
-          c.raclub === "membro"
+        const jtclubLabel =
+          c.jtclub === "membro"
             ? `<span class="status-badge status-confirmed">Membro</span>`
             : `<span class="status-badge">Não é membro</span>`;
 
@@ -99,7 +97,7 @@ export function initClientesTab() {
           <tr>
             <td>${escapeHtml(c.nomeCompleto || "—")}</td>
             <td>${escapeHtml(c.telefone || "—")}</td>
-            <td>${raclubLabel}</td>
+            <td>${jtclubLabel}</td>
             <td style="text-align:right;">
               <div class="timeslot-actions" style="justify-content:flex-end;">
                 <button class="btn btn-sm btn-edit" data-action="edit-client" data-id="${escapeHtml(c.id)}" title="Editar">
@@ -107,7 +105,7 @@ export function initClientesTab() {
                 </button>
 
                 ${
-                  c.raclub === "membro"
+                  c.jtclub === "membro"
                     ? `
                   <button class="btn btn-sm btn-success" data-action="pay-client" data-id="${escapeHtml(c.id)}" title="Registrar pagamento">
                     <i class="bx bx-dollar"></i>
@@ -128,10 +126,10 @@ export function initClientesTab() {
   }
 
   function renderPayments(payments) {
-    if (!raclubPayTbody) return;
+    if (!jtclubPayTbody) return;
 
     if (!payments.length) {
-      raclubPayTbody.innerHTML = `
+      jtclubPayTbody.innerHTML = `
         <tr>
           <td colspan="4" class="loading-row">Sem pagamentos para exibir.</td>
         </tr>
@@ -139,7 +137,7 @@ export function initClientesTab() {
       return;
     }
 
-    raclubPayTbody.innerHTML = payments
+    jtclubPayTbody.innerHTML = payments
       .map((p) => {
         const ts = p.date || p.dataPagamento || p.createdAt;
         const d = ts?.toDate ? ts.toDate() : null;
@@ -166,7 +164,7 @@ export function initClientesTab() {
     const nome = (cliNome?.value || "").trim();
     const sobrenome = (cliSobrenome?.value || "").trim();
     const telefone = formatPhone(cliTelefone?.value || "");
-    const raclub = cliRaclub?.value || "nao";
+    const jtclub = cliJtclub?.value || "nao";
 
     if (!nome) {
       showNotification("Informe o nome do cliente.", "error");
@@ -175,14 +173,14 @@ export function initClientesTab() {
     }
 
     const nomeCompleto = `${nome} ${sobrenome}`.trim();
-    const isMember = raclub === "membro";
+    const isMember = jtclub === "membro";
 
     const payload = {
       nome,
       sobrenome,
       nomeCompleto,
       telefone,
-      raclub,
+      jtclub,
       status: isMember ? "ativo" : "nao_membro",
       createdAt: serverTimestamp(),
 
@@ -190,7 +188,7 @@ export function initClientesTab() {
       name: nomeCompleto,
       phone: telefone,
       type: isMember ? "plano_jc" : "cliente",
-      plano: isMember ? "ra_club" : "cliente",
+      plano: isMember ? "jt_club" : "cliente",
       isPlan: isMember,
       valorMensal: 0,
       diaPagamento: null,
@@ -198,7 +196,7 @@ export function initClientesTab() {
     };
 
     try {
-      await addDoc(collection(db, "raclub_clients"), payload);
+      await addDoc(collection(db, "jtclub_clients"), payload);
       resetClientForm();
       showNotification("Cliente salvo com sucesso!", "success");
     } catch (err) {
@@ -222,7 +220,7 @@ export function initClientesTab() {
           onClick: async () => {
             await waitForAuth();
             try {
-              await deleteDoc(doc(db, "raclub_clients", id));
+              await deleteDoc(doc(db, "jtclub_clients", id));
               showNotification("Cliente excluído com sucesso!", "success");
             } catch (err) {
               console.error("Erro ao excluir cliente:", err);
@@ -259,9 +257,9 @@ export function initClientesTab() {
 
           <div class="field">
             <label>JT Club</label>
-            <select id="editCliRaclub">
-              <option value="nao" ${client.raclub === "nao" ? "selected" : ""}>Não é membro</option>
-              <option value="membro" ${client.raclub === "membro" ? "selected" : ""}>Membro</option>
+            <select id="editCliJtclub">
+              <option value="nao" ${client.jtclub === "nao" ? "selected" : ""}>Não é membro</option>
+              <option value="membro" ${client.jtclub === "membro" ? "selected" : ""}>Membro</option>
             </select>
           </div>
         </div>
@@ -277,7 +275,7 @@ export function initClientesTab() {
             const nome = ($("#editCliNome")?.value || "").trim();
             const sobrenome = ($("#editCliSobrenome")?.value || "").trim();
             const telefone = formatPhone($("#editCliTelefone")?.value || "");
-            const raclub = $("#editCliRaclub")?.value || "nao";
+            const jtclub = $("#editCliJtclub")?.value || "nao";
 
             if (!nome) {
               showNotification("Informe o nome do cliente.", "error");
@@ -285,22 +283,22 @@ export function initClientesTab() {
             }
 
             const nomeCompleto = `${nome} ${sobrenome}`.trim();
-            const isMember = raclub === "membro";
+            const isMember = jtclub === "membro";
 
             try {
-              await updateDoc(doc(db, "raclub_clients", id), {
+              await updateDoc(doc(db, "jtclub_clients", id), {
                 nome,
                 sobrenome,
                 nomeCompleto,
                 telefone,
-                raclub,
+                jtclub,
                 status: isMember ? "ativo" : "nao_membro",
 
                 // compatibilidade com estrutura antiga
                 name: nomeCompleto,
                 phone: telefone,
                 type: isMember ? "plano_jc" : "cliente",
-                plano: isMember ? "ra_club" : "cliente",
+                plano: isMember ? "jt_club" : "cliente",
                 isPlan: isMember,
                 situacao: isMember ? "ativo" : "nao_membro"
               });
@@ -361,7 +359,7 @@ export function initClientesTab() {
             }
 
             try {
-              await addDoc(collection(db, "raclub_payments"), {
+              await addDoc(collection(db, "jtclub_payments"), {
                 clientId: client.id,
                 clientName: client.nomeCompleto,
                 value,
@@ -417,7 +415,7 @@ export function initClientesTab() {
     await waitForAuth();
 
     onSnapshot(
-      collection(db, "raclub_clients"),
+      collection(db, "jtclub_clients"),
       (snap) => {
         state.allClients = snap.docs
           .map((d) => mapClientDoc(d.id, d.data() || {}))
@@ -435,7 +433,7 @@ export function initClientesTab() {
     );
 
     onSnapshot(
-      query(collection(db, "raclub_payments"), orderBy("date", "desc")),
+      query(collection(db, "jtclub_payments"), orderBy("date", "desc")),
       (snap) => {
         const payments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
         renderPayments(payments);
@@ -445,7 +443,7 @@ export function initClientesTab() {
 
         // fallback para registros antigos que podem não ter o campo "date"
         onSnapshot(
-          collection(db, "raclub_payments"),
+          collection(db, "jtclub_payments"),
           (snap) => {
             const payments = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
             payments.sort((a, b) => {
@@ -457,7 +455,7 @@ export function initClientesTab() {
           },
           (err2) => {
             console.error("Erro fallback pagamentos:", err2);
-            raclubPayTbody.innerHTML = `
+            jtclubPayTbody.innerHTML = `
               <tr>
                 <td colspan="4" class="loading-row">Erro ao carregar pagamentos.</td>
               </tr>

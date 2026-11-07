@@ -45,7 +45,7 @@ let agendamentoContexto = {
   telefoneCliente: '',
   produtos: [],
   totalProdutos: 0,
-  raclub: { status: 'nao' },
+  jtclub: { status: 'nao' },
   servico: null // {nome, valor, tempoMin}
 };
 
@@ -177,12 +177,12 @@ function restaurarContextoSessao() {
   } catch { }
 }
 function tentarRetomarPosCheckout() {
-  const flag = sessionStorage.getItem('raclubCheckoutRedirect');
+  const flag = sessionStorage.getItem('jtclubCheckoutRedirect');
   if (flag === '1') {
-    sessionStorage.removeItem('raclubCheckoutRedirect');
+    sessionStorage.removeItem('jtclubCheckoutRedirect');
     restaurarContextoSessao();
     if (ctx?.colecao && (ctx?.profissionalNome || ctx?.profissionalId)) {
-      agendamentoContexto.raclub = { status: 'assinar_link' };
+      agendamentoContexto.jtclub = { status: 'assinar_link' };
       fecharModal('modalJTClub');
       abrirModalAgendamento();
     }
@@ -233,20 +233,20 @@ const btnJTNao = document.getElementById('btnJTNao');
 const btnJTAssinar = document.getElementById('btnJTAssinar');
 function abrirModalJTClub() { abrirModal('modalJTClub'); }
 btnJTJaMembro?.addEventListener('click', () => {
-  agendamentoContexto.raclub = { status: 'membro' };
+  agendamentoContexto.jtclub = { status: 'membro' };
   fecharModal('modalJTClub');
   abrirModalAgendamento({ preservarSelecao: retomarAgendamentoDepoisDoCliente });
   retomarAgendamentoDepoisDoCliente = false;
 });
 btnJTNao?.addEventListener('click', () => {
-  agendamentoContexto.raclub = { status: 'nao' };
+  agendamentoContexto.jtclub = { status: 'nao' };
   fecharModal('modalJTClub');
   abrirModalAgendamento({ preservarSelecao: retomarAgendamentoDepoisDoCliente });
   retomarAgendamentoDepoisDoCliente = false;
 });
 if (btnJTAssinar) {
   btnJTAssinar.addEventListener('click', () => {
-    agendamentoContexto.raclub = { status: 'assinar_link' };
+    agendamentoContexto.jtclub = { status: 'assinar_link' };
     salvarContextoSessao();
     fecharModal('modalJTClub');
     abrirModalAgendamento({ preservarSelecao: retomarAgendamentoDepoisDoCliente });
@@ -924,7 +924,7 @@ confirmarBtn?.addEventListener('click', async () => {
     const hhmm = normalizeHora(hora);
     const col = (ctx.colecao || '').trim();
     const ref = doc(db, col, toKey(data, hhmm));
-    const isJtClub = agendamentoContexto?.raclub?.status === 'membro';
+    const isJtClub = agendamentoContexto?.jtclub?.status === 'membro';
     const nomeCompleto = `${agendamentoContexto.nomeCliente} ${agendamentoContexto.sobrenomeCliente}`.trim();
 
     const booking = {
@@ -943,10 +943,10 @@ confirmarBtn?.addEventListener('click', async () => {
       servicoTempoMin: Number(agendamentoContexto.servico.tempoMin) || 30,
       produtos: [],
       totalProdutos: 0,
-      raclub: agendamentoContexto.raclub || { status: 'nao' },
-      raclubMembro: isJtClub,
-      clienteTipo: isJtClub ? 'raclub' : 'cliente',
-      tags: isJtClub ? ['raclub'] : [],
+      jtclub: agendamentoContexto.jtclub || { status: 'nao' },
+      jtclubMembro: isJtClub,
+      clienteTipo: isJtClub ? 'jtclub' : 'cliente',
+      tags: isJtClub ? ['jtclub'] : [],
       createdAt: serverTimestamp(),
     };
 
@@ -1029,9 +1029,9 @@ confirmarBtn?.addEventListener('click', async () => {
       ? `${agendamentoContexto.servico.nome} (${formatarValorServico(agendamentoContexto.servico.valor)})`
       : '—';
 
-    let raclubTxt = "Não";
-    if (agendamentoContexto.raclub.status === 'membro') raclubTxt = "Membro";
-    else if (agendamentoContexto.raclub.status === 'assinar' || agendamentoContexto.raclub.status === 'assinar_link') raclubTxt = "Deseja assinar";
+    let jtclubTxt = "Não";
+    if (agendamentoContexto.jtclub.status === 'membro') jtclubTxt = "Membro";
+    else if (agendamentoContexto.jtclub.status === 'assinar' || agendamentoContexto.jtclub.status === 'assinar_link') jtclubTxt = "Deseja assinar";
 
     if (confResumo) {
       confResumo.innerHTML = `
@@ -1041,7 +1041,7 @@ confirmarBtn?.addEventListener('click', async () => {
         <div class="line"><span class="label">Data:</span><span>${dataBR}</span></div>
         <div class="line"><span class="label">Hora:</span><span>${hhmm}</span></div>
         <div class="line"><span class="label">Serviço:</span><span>${servicoTxt}</span></div>
-        <div class="line"><span class="label">JT Club:</span><span>${raclubTxt}</span></div>
+        <div class="line"><span class="label">JT Club:</span><span>${jtclubTxt}</span></div>
       `;
     }
     fecharModal('modal');

@@ -414,7 +414,7 @@ export const PAYMENT_METHODS = [
 ];
 
 export function paymentMethodLabel(method) {
-  return method === "RA Club" ? "JT Club" : method; // registros antigos gravados com o nome anterior
+  return method;
 }
 
 // ✅ fallback

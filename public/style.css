@@ -744,13 +744,13 @@ option[disabled].reservado {
   box-shadow: 0 0 0 3px rgba(239, 68, 68, .12);
 }
 
-.raclub-head .muted,
+.jtclub-head .muted,
 .muted {
   color: var(--muted);
   font-size: .9rem;
 }
 
-.raclub-list {
+.jtclub-list {
   display: grid;
   gap: 6px;
   margin: 12px 0 4px;
