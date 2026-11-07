@@ -1,0 +1,1287 @@
+// agenda.js — Aba Agenda do painel: ver o dia de cada profissional, criar, editar e remover agendamentos, bloquear e desbloquear horários.
+import {
+    db, $, showNotification, mainModal,
+    state, generateHours, toKey,
+    waitForAuth, getSelectedColecao, getProfLabelByColecao,
+    setDoc, updateDoc, deleteDoc, doc, getDoc, getDocs, collection, query, where, serverTimestamp,
+    PAYMENT_METHODS, paymentMethodLabel, BOOKING_URL,
+    openServicosModal,
+    bindProfessionalSync,
+    populateProfessionalSelects
+} from "./firebase.js";
+import { marcarOcupado, liberarHorario } from "./ocupados.js";
+
+export function initAgendaTab() {
+    const agendaGrid = $("#agenda-grid");
+    const dataFiltro = $("#dataFiltro");
+    const horaFiltro = $("#horaFiltro");
+    const buscarBtn = $("#buscarBtn");
+    const bloquearBtn = $("#bloquearBtn");
+    const desbloquearBtn = $("#desbloquearBtn");
+    const profissionalSelect = $("#profissionalSelect");
+
+    if (!agendaGrid) return;
+    if (window.__agendaTabStarted) return;
+    window.__agendaTabStarted = true;
+
+    function isValidHHmm(s) {
+        return typeof s === "string" && /^\d{2}:\d{2}$/.test(s);
+    }
+
+    function normalizeTime(t) {
+        const v = String(t || "").trim();
+        return isValidHHmm(v) ? v : "";
+    }
+
+    function hhmmToMin(hhmm) {
+        const v = normalizeTime(hhmm);
+        if (!v) return null;
+        const [h, m] = v.split(":").map(Number);
+        if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+        return h * 60 + m;
+    }
+
+    function minToHHmm(min) {
+        const h = Math.floor(min / 60);
+        const m = min % 60;
+        return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+    }
+
+    function addMinHHmm(hhmm, deltaMin) {
+        const base = hhmmToMin(hhmm);
+        if (base == null) return "";
+        return minToHHmm(base + Number(deltaMin || 0));
+    }
+
+    function overlaps(aStart, aEnd, bStart, bEnd) {
+        return aStart < bEnd && bStart < aEnd;
+    }
+
+    function pickTime({ prof, geral, semana, fallback }) {
+        return normalizeTime(prof) || normalizeTime(geral) || normalizeTime(semana) || fallback;
+    }
+
+    function getStepMin() {
+        const n = Number(state?.INTERVAL_MIN || 30);
+        if (!Number.isFinite(n) || n <= 0) return 30;
+        return Math.max(5, Math.round(n));
+    }
+
+    function getBreakRange() {
+        const breakStart = normalizeTime(state?.BREAK?.breakStart || "");
+        const breakEnd = normalizeTime(state?.BREAK?.breakEnd || "");
+
+        if (!breakStart || !breakEnd) return null;
+
+        const bs = hhmmToMin(breakStart);
+        const be = hhmmToMin(breakEnd);
+
+        if (bs == null || be == null || bs >= be) return null;
+
+        return {
+            breakStart,
+            breakEnd,
+            breakStartMin: bs,
+            breakEndMin: be,
+        };
+    }
+
+    function safeGenerateHours(startHH, endHH, stepMin) {
+        const start = hhmmToMin(startHH);
+        const end = hhmmToMin(endHH);
+        const step = Math.max(1, Number(stepMin || getStepMin()));
+        const breakRange = getBreakRange();
+
+        if (start == null || end == null) return [];
+        if (start >= end) return [];
+
+        try {
+            const breakStart = breakRange?.breakStart || "";
+            const breakEnd = breakRange?.breakEnd || "";
+            const generated = generateHours(startHH, endHH, step, breakStart, breakEnd);
+            if (Array.isArray(generated) && generated.length) {
+                return generated.filter((h) => {
+                    const m = hhmmToMin(h);
+                    if (m == null) return false;
+                    if (m < start || m >= end) return false;
+                    if (breakRange && m >= breakRange.breakStartMin && m < breakRange.breakEndMin) return false;
+                    return true;
+                });
+            }
+        } catch (_) {}
+
+        const out = [];
+        let cur = start;
+
+        const mod = (cur - start) % step;
+        if (mod !== 0) cur += (step - mod);
+
+        while (cur < end) {
+            const inBreak =
+                breakRange &&
+                cur >= breakRange.breakStartMin &&
+                cur < breakRange.breakEndMin;
+
+            if (!inBreak) out.push(minToHHmm(cur));
+            cur += step;
+        }
+
+        return out.filter((h) => {
+            const m = hhmmToMin(h);
+            return m != null && m >= start && m < end;
+        });
+    }
+
+    function getWeekdayIndex(dateYmd) {
+        const [y, m, d] = String(dateYmd).split("-").map(Number);
+        const dt = new Date(y, (m || 1) - 1, d || 1);
+        return dt.getDay();
+    }
+
+    function formatDateBr(ymd) {
+        if (!ymd) return "";
+        const [y, m, d] = String(ymd).split("-");
+        return `${d}/${m}/${y}`;
+    }
+
+    function sanitizePhoneForWhatsApp(phone) {
+        const digits = String(phone || "").replace(/\D/g, "");
+        if (!digits) return "";
+        if (digits.startsWith("55")) return digits;
+        return `55${digits}`;
+    }
+
+    function escapeHtml(str) {
+        return String(str ?? "")
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&#39;");
+    }
+
+    function getProfessionalByColecao(colecao) {
+        return (state.PROFESSIONALS || []).find((p) => p?.colecao === colecao) || null;
+    }
+
+    function getColecaoByProfId(profId) {
+        return (state.PROFESSIONALS || []).find((p) => p?.id === profId)?.colecao || "";
+    }
+
+    function renderProfessionalOptions(selectedColecao = "") {
+        const profs = (state.PROFESSIONALS || []).filter((p) => p && p.ativo !== false);
+        return profs
+            .map((p) => {
+                const selected = p.colecao === selectedColecao ? "selected" : "";
+                return `<option value="${escapeHtml(p.id)}" ${selected}>${escapeHtml(p.nome || p.label || "Profissional")}</option>`;
+            })
+            .join("");
+    }
+
+    function openWhatsAppForAppointment({ telefone, nome, servico, data, hora, profissional }) {
+        const number = sanitizePhoneForWhatsApp(telefone);
+
+        if (!number) {
+            showNotification("Esse cliente não possui telefone cadastrado.", "error");
+            return;
+        }
+
+        const message = encodeURIComponent(
+            `Olá ${nome || "cliente"}! 👋\n\n` +
+            `Seu agendamento está confirmado no salão ✨\n\n` +
+            `📅 Data: ${formatDateBr(data)}\n` +
+            `⏰ Horário: ${hora}\n` +
+            `💇 Serviço: ${servico || "Serviço"}\n` +
+            `👩‍🔧 Profissional: ${profissional || "-"}\n\n` +
+            `Se precisar de qualquer ajuste, me chama por aqui 💚`
+        );
+
+        const url = `https://wa.me/${number}?text=${message}`;
+        window.open(url, "_blank", "noopener");
+    }
+
+    async function readExceptionGeral(ymd) {
+        try {
+            const snapA = await getDoc(doc(db, "config", "excecoes", "dias", ymd));
+            if (snapA.exists()) return snapA.data() || null;
+        } catch (_) {}
+
+        try {
+            const snapB = await getDoc(doc(db, "excecoes", ymd));
+            if (snapB.exists()) return snapB.data() || null;
+        } catch (_) {}
+
+        return null;
+    }
+
+    async function readExceptionProf(profId, ymd) {
+        if (!profId) return null;
+        try {
+            const snap = await getDoc(doc(db, "profissionais", profId, "excecoes", ymd));
+            if (snap.exists()) return snap.data() || null;
+        } catch (_) {}
+        return null;
+    }
+
+    async function getDayAvailabilityForColecao(ymd, colecao) {
+        await waitForAuth();
+
+        const cfgWeekdays = Array.isArray(state?.CFG_WEEK?.weekdays) ? state.CFG_WEEK.weekdays : [1, 2, 3, 4, 5];
+        const weekStart =
+            normalizeTime(state?.CFG_WEEK?.dayStart) ||
+            normalizeTime(state?.BUSINESS_HOURS?.inicio) ||
+            "09:00";
+        const weekEnd =
+            normalizeTime(state?.CFG_WEEK?.dayEnd) ||
+            normalizeTime(state?.BUSINESS_HOURS?.fim) ||
+            "19:00";
+
+        const wd = getWeekdayIndex(ymd);
+        const weekOpen = cfgWeekdays.includes(wd);
+
+        let exGeral = null;
+        try {
+            exGeral = await readExceptionGeral(ymd);
+        } catch (e) {
+            console.error("Erro ao ler exceção geral:", e);
+        }
+
+        let exProf = null;
+        const profId = getProfessionalByColecao(colecao)?.id || "";
+        try {
+            exProf = await readExceptionProf(profId, ymd);
+        } catch (e) {
+            console.error("Erro ao ler exceção profissional:", e);
+        }
+
+        if (exProf?.fechado === true) {
+            return { aberto: false, inicio: "", fim: "", motivo: "Fechado (exceção do profissional)" };
+        }
+
+        if (exGeral?.fechado === true) {
+            return { aberto: false, inicio: "", fim: "", motivo: "Fechado (exceção do salão)" };
+        }
+
+        const exInicio = normalizeTime(exProf?.inicio) || normalizeTime(exGeral?.inicio);
+        const exFim = normalizeTime(exProf?.fim) || normalizeTime(exGeral?.fim);
+
+        if (!weekOpen && !(exInicio && exFim)) {
+            return { aberto: false, inicio: "", fim: "", motivo: "Fechado no padrão da semana" };
+        }
+
+        const inicio = pickTime({
+            prof: exProf?.inicio,
+            geral: exGeral?.inicio,
+            semana: weekStart,
+            fallback: "09:00",
+        });
+
+        const fim = pickTime({
+            prof: exProf?.fim,
+            geral: exGeral?.fim,
+            semana: weekEnd,
+            fallback: "19:00",
+        });
+
+        if (!isValidHHmm(inicio) || !isValidHHmm(fim)) {
+            return { aberto: false, inicio: "", fim: "", motivo: "Horário inválido" };
+        }
+
+        if (inicio >= fim) {
+            return { aberto: false, inicio: "", fim: "", motivo: "Início maior/igual ao fim" };
+        }
+
+        return { aberto: true, inicio, fim, motivo: "" };
+    }
+
+    async function getAvailableHoursForSelection(ymd, colecaoSel) {
+        if (!ymd) return [];
+
+        const profs = (state.PROFESSIONALS || []).filter((p) => p && p.ativo !== false);
+        if (!profs.length) return [];
+
+        const stepMin = getStepMin();
+
+        if (colecaoSel === "todos") {
+            const union = new Set();
+
+            for (const p of profs) {
+                const av = await getDayAvailabilityForColecao(ymd, p.colecao);
+                if (!av.aberto) continue;
+
+                safeGenerateHours(av.inicio, av.fim, stepMin).forEach((h) => union.add(h));
+            }
+
+            return Array.from(union).sort((a, b) => String(a).localeCompare(String(b)));
+        }
+
+        const av = await getDayAvailabilityForColecao(ymd, colecaoSel);
+        if (!av.aberto) return [];
+
+        return safeGenerateHours(av.inicio, av.fim, stepMin);
+    }
+
+    async function fillHoraFiltroDynamic({ keepSelection = true } = {}) {
+        if (!horaFiltro) return;
+
+        const prev = keepSelection ? (horaFiltro.value || "") : "";
+        const ymd = dataFiltro?.value;
+        const colecaoSel = getSelectedColecao();
+
+        horaFiltro.innerHTML = `<option value="">Todas</option>`;
+
+        const hours = await getAvailableHoursForSelection(ymd, colecaoSel);
+
+        hours.forEach((h) => {
+            const opt = document.createElement("option");
+            opt.value = h;
+            opt.textContent = h;
+            horaFiltro.appendChild(opt);
+        });
+
+        if (keepSelection && prev) {
+            const ok = [...horaFiltro.options].some((o) => o.value === prev);
+            if (ok) horaFiltro.value = prev;
+        }
+    }
+
+    async function fetchAppointmentsDayForColecao(dateYmd, colecao) {
+        await waitForAuth();
+
+        const rows = [];
+        const qy = query(collection(db, colecao), where("data", "==", dateYmd));
+        const snap = await getDocs(qy);
+
+        snap.forEach((d) => {
+            const v = d.data() || {};
+            const hora = (v.hora || "").trim();
+            if (!hora) return;
+
+            const firstName = (v.clienteNome || "").trim();
+            const lastName = (v.clienteSobrenome || "").trim();
+            const fullName =
+                (v.clienteNomeCompleto || "").trim() ||
+                [firstName, lastName].filter(Boolean).join(" ") ||
+                (v.cliente || "");
+
+            const valor =
+                v.valor !== undefined && v.valor !== null
+                    ? Number(v.valor)
+                    : v.servicoValor !== undefined && v.servicoValor !== null
+                    ? Number(v.servicoValor)
+                    : 0;
+
+            const forma = v.pagamentoForma || "";
+            const raclub = v?.raclub?.status === "membro";
+            const bloqueado = !!v.bloqueado;
+            const servicoNome = v.servicoNome || "";
+            const telefone = v.clienteTelefone || v.telefoneCliente || v.phone || v.telefone || "";
+            const tempoMin = Number(v.servicoTempoMin ?? v.tempoMin ?? getStepMin()) || getStepMin();
+
+            rows.push({
+                id: d.id,
+                colecao,
+                profissional: v.profissional || getProfLabelByColecao(colecao),
+                hora,
+                clienteNome: bloqueado && !fullName ? "" : fullName || "—",
+                telefone,
+                valor,
+                pagamentoForma: forma,
+                raclub,
+                bloqueado,
+                servico: servicoNome || "Serviço",
+                tempoMin,
+            });
+        });
+
+        return rows;
+    }
+
+    async function fetchAppointmentsDay(dateYmd) {
+        await waitForAuth();
+        const colecaoSel = getSelectedColecao();
+
+        if (colecaoSel === "todos") {
+            const profs = (state.PROFESSIONALS || []).filter((p) => p.ativo !== false);
+            const tasks = profs.map((p) => fetchAppointmentsDayForColecao(dateYmd, p.colecao));
+            const results = await Promise.all(tasks);
+            const rows = results.flat();
+            rows.sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+            return rows;
+        }
+
+        const rows = await fetchAppointmentsDayForColecao(dateYmd, colecaoSel);
+        rows.sort((a, b) => (a.hora || "").localeCompare(b.hora || ""));
+        return rows;
+    }
+
+    function canPlaceServiceAtTime({
+        startHH,
+        serviceMin,
+        dayStartHH,
+        dayEndHH,
+        appointments
+    }) {
+        const start = hhmmToMin(startHH);
+        const end = start + Number(serviceMin || 0);
+
+        const dayStart = hhmmToMin(dayStartHH);
+        const dayEnd = hhmmToMin(dayEndHH);
+        const breakRange = getBreakRange();
+
+        if (start == null || dayStart == null || dayEnd == null) return false;
+        if (start < dayStart) return false;
+        if (end > dayEnd) return false;
+
+        if (
+            breakRange &&
+            overlaps(start, end, breakRange.breakStartMin, breakRange.breakEndMin)
+        ) {
+            return false;
+        }
+
+        const apps = Array.isArray(appointments) ? appointments : [];
+        for (const a of apps) {
+            const aStart = hhmmToMin(a.hora);
+            if (aStart == null) continue;
+
+            const aDur = Number(a.tempoMin || getStepMin()) || getStepMin();
+            const aEnd = aStart + aDur;
+
+            if (overlaps(start, end, aStart, aEnd)) return false;
+        }
+
+        return true;
+    }
+
+    function findOccupancyForSlot(slotHH, appointments) {
+        const slotStart = hhmmToMin(slotHH);
+        if (slotStart == null) return null;
+
+        const slotEnd = slotStart + getStepMin();
+
+        for (const a of (appointments || [])) {
+            const aStart = hhmmToMin(a.hora);
+            if (aStart == null) continue;
+
+            const aDur = Number(a.tempoMin || getStepMin()) || getStepMin();
+            const aEnd = aStart + aDur;
+
+            if (overlaps(slotStart, slotEnd, aStart, aEnd)) {
+                return {
+                    appt: a,
+                    isStart: normalizeTime(a.hora) === normalizeTime(slotHH),
+                    apptStartHH: a.hora,
+                    apptEndHH: minToHHmm(aEnd),
+                };
+            }
+        }
+
+        return null;
+    }
+
+    async function renderAgendaGrid(appointments, filterHour, ymd, colecaoSel) {
+        const allowedHours = ymd ? await getAvailableHoursForSelection(ymd, colecaoSel) : [];
+
+        if (!allowedHours.length && ymd && colecaoSel !== "todos") {
+            const av = await getDayAvailabilityForColecao(ymd, colecaoSel);
+            agendaGrid.innerHTML = `
+                <div class="loading-row">
+                    Nenhum horário disponível para este filtro.<br/>
+                    <span class="timeslot-note">${av?.motivo || ""}</span>
+                </div>
+            `;
+            return;
+        }
+
+        if (!allowedHours.length) {
+            agendaGrid.innerHTML = `<div class="loading-row">Nenhum horário disponível para este filtro.</div>`;
+            return;
+        }
+
+        const allowedSet = new Set(allowedHours);
+        const hoursToRender = filterHour
+            ? (allowedSet.has(filterHour) ? [filterHour] : [])
+            : allowedHours;
+
+        if (!hoursToRender.length) {
+            agendaGrid.innerHTML = `<div class="loading-row">Nenhum horário disponível para este filtro.</div>`;
+            return;
+        }
+
+        agendaGrid.innerHTML = hoursToRender.map((h) => {
+            const occ = findOccupancyForSlot(h, appointments);
+
+            if (!occ) {
+                return `
+                    <div class="timeslot">
+                        <div class="timeslot-header">
+                            <span class="timeslot-hour">${h}</span>
+                            <span class="timeslot-badge">Disponível</span>
+                        </div>
+                        <div class="timeslot-body">
+                            <p>Nenhum agendamento para este horário.</p>
+                        </div>
+                        <div class="timeslot-actions">
+                            <button class="btn btn-sm btn-edit" data-action="schedule" data-time="${h}">
+                                <i class="bx bx-calendar-plus"></i> Agendar
+                            </button>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const a = occ.appt;
+
+            if (a.bloqueado && (!a.clienteNome || a.clienteNome === "—")) {
+                if (!occ.isStart) {
+                    return `
+                        <div class="timeslot">
+                            <div class="timeslot-header">
+                                <span class="timeslot-hour">${h}</span>
+                                <span class="timeslot-badge">Ocupado</span>
+                            </div>
+                            <div class="timeslot-body">
+                                <div class="timeslot-blocked">
+                                    <strong>Horário bloqueado</strong>
+                                    <div class="timeslot-note">
+                                        Continuação do bloqueio (${escapeHtml(occ.apptStartHH)}–${escapeHtml(occ.apptEndHH)})
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                return `
+                    <div class="timeslot">
+                        <div class="timeslot-header">
+                            <span class="timeslot-hour">${h}</span>
+                            <span class="timeslot-badge">1 agendamento(s)</span>
+                        </div>
+                        <div class="timeslot-body">
+                            <div class="timeslot-blocked">
+                                <strong>Horário bloqueado</strong>
+                                <div class="timeslot-actions">
+                                    <button class="btn btn-sm btn-del" data-action="cancel-agenda" data-id="${escapeHtml(a.id)}" data-colecao="${escapeHtml(a.colecao)}">
+                                        <i class="bx bx-lock-open"></i> Desbloquear
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const phoneInline = a.telefone
+                ? `<span class="timeslot-contact">Tel: ${escapeHtml(a.telefone)}</span>`
+                : "";
+
+            const durLabel = a.tempoMin ? ` • ${Number(a.tempoMin)} min` : "";
+
+            if (!occ.isStart) {
+                return `
+                    <div class="timeslot">
+                        <div class="timeslot-header">
+                            <span class="timeslot-hour">${h}</span>
+                            <span class="timeslot-badge">Ocupado</span>
+                        </div>
+                        <div class="timeslot-body">
+                            <div>
+                                <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                                    <strong>${escapeHtml(a.clienteNome)}</strong>
+                                    ${phoneInline}
+                                </div>
+                                <div>${escapeHtml(a.servico)}${durLabel}</div>
+                                <div class="timeslot-note">
+                                    Continuação (${escapeHtml(occ.apptStartHH)}–${escapeHtml(occ.apptEndHH)})
+                                </div>
+                                <div class="timeslot-prof">Profissional: ${escapeHtml(a.profissional || "-")}</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            const hasPhone = String(a.telefone || "").trim().length > 0;
+
+            return `
+                <div class="timeslot">
+                    <div class="timeslot-header">
+                        <span class="timeslot-hour">${h}</span>
+                        <span class="timeslot-badge">1 agendamento(s)</span>
+                    </div>
+                    <div class="timeslot-body">
+                        <div>
+                            <div style="display:flex;align-items:baseline;gap:8px;flex-wrap:wrap">
+                                <strong>${escapeHtml(a.clienteNome)}</strong>
+                                ${phoneInline}
+                            </div>
+                            <div>${escapeHtml(a.servico)}${durLabel}</div>
+                            <div>${(Number(a.valor) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })} • ${escapeHtml(paymentMethodLabel(a.pagamentoForma || "Forma não informada"))}</div>
+                            ${a.raclub ? `<span class="timeslot-badge">JT Club</span>` : ""}
+                            <div class="timeslot-note">
+                                Ocupa: ${escapeHtml(occ.apptStartHH)}–${escapeHtml(occ.apptEndHH)}
+                            </div>
+                            <div class="timeslot-prof">Profissional: ${escapeHtml(a.profissional || "-")}</div>
+                        </div>
+                        <div class="timeslot-actions" style="display:flex;gap:8px;flex-wrap:wrap;">
+                            ${hasPhone ? `
+                                <button
+                                    class="btn btn-sm"
+                                    style="background:#25D366;color:#fff;border-color:#25D366;"
+                                    data-action="whatsapp-agenda"
+                                    data-telefone="${escapeHtml(a.telefone || "")}"
+                                    data-nome="${escapeHtml(a.clienteNome || "")}"
+                                    data-servico="${escapeHtml(a.servico || "")}"
+                                    data-data="${escapeHtml(ymd)}"
+                                    data-hora="${escapeHtml(a.hora)}"
+                                    data-profissional="${escapeHtml(a.profissional || "")}"
+                                >
+                                    <i class="bx bxl-whatsapp"></i>
+                                </button>
+                            ` : ""}
+                            <button class="btn btn-sm btn-edit" data-action="edit-agenda" data-id="${escapeHtml(a.id)}" data-colecao="${escapeHtml(a.colecao)}">
+                                <i class="bx bx-pencil"></i>
+                            </button>
+                            <button class="btn btn-sm btn-del" data-action="cancel-agenda" data-id="${escapeHtml(a.id)}" data-colecao="${escapeHtml(a.colecao)}">
+                                <i class="bx bx-x"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join("");
+    }
+
+    async function buscarAgenda() {
+        const ymd = dataFiltro?.value;
+        if (!ymd) {
+            agendaGrid.innerHTML = `<div class="loading-row">Selecione uma data para ver a agenda.</div>`;
+            return;
+        }
+
+        try {
+            agendaGrid.innerHTML = `<div class="loading-row">Carregando...</div>`;
+
+            await fillHoraFiltroDynamic({ keepSelection: true });
+
+            const apps = await fetchAppointmentsDay(ymd);
+            const filterHour = horaFiltro?.value || "";
+            const colecaoSel = getSelectedColecao();
+
+            await renderAgendaGrid(apps, filterHour, ymd, colecaoSel);
+        } catch (err) {
+            console.error(err);
+            agendaGrid.innerHTML = `<div class="loading-row">Erro ao carregar agenda.</div>`;
+        }
+    }
+
+    bindProfessionalSync({
+        onAgendaChange: async () => {
+            if (horaFiltro) horaFiltro.value = "";
+            await fillHoraFiltroDynamic({ keepSelection: false });
+            await buscarAgenda();
+        },
+    });
+
+    buscarBtn?.addEventListener("click", buscarAgenda);
+
+    dataFiltro?.addEventListener("change", async () => {
+        if (horaFiltro) horaFiltro.value = "";
+        await fillHoraFiltroDynamic({ keepSelection: false });
+        await buscarAgenda();
+    });
+
+    horaFiltro?.addEventListener("change", buscarAgenda);
+
+    profissionalSelect?.addEventListener("change", async () => {
+        if (horaFiltro) horaFiltro.value = "";
+        await fillHoraFiltroDynamic({ keepSelection: false });
+        await buscarAgenda();
+    });
+
+    $("#openBookingModal")?.addEventListener("click", () => {
+        mainModal.show({
+            title: "Abrir agendamentos",
+            body: `
+                <p>Escolha como deseja abrir a página de agendamentos.</p>
+                <div class="booking-link-panel">
+                    <div class="booking-link-label">Endereço</div>
+                    <a class="booking-link-url" href="${BOOKING_URL}" target="_blank" rel="noopener">${BOOKING_URL}</a>
+                </div>
+            `,
+            buttons: [
+                { text: "Cancelar", class: "btn-light" },
+                {
+                    text: "<i class='bx bx-link-external'></i> Abrir em nova aba",
+                    class: "btn",
+                    onClick: () => window.open(BOOKING_URL, "_blank", "noopener")
+                },
+                {
+                    text: "<i class='bx bx-copy'></i> Copiar link",
+                    class: "btn-light",
+                    onClick: async () => {
+                        try {
+                            await navigator.clipboard.writeText(BOOKING_URL);
+                        } catch {
+                            const ta = document.createElement("textarea");
+                            ta.value = BOOKING_URL;
+                            document.body.appendChild(ta);
+                            ta.select();
+                            document.execCommand("copy");
+                            ta.remove();
+                        }
+                        showNotification("Link copiado!");
+                        return false;
+                    },
+                },
+            ],
+        });
+    });
+
+    agendaGrid?.addEventListener("click", (e) => {
+        const target = e.target.closest("[data-action]");
+        if (!target) return;
+
+        const { action, id, time } = target.dataset;
+        const colecao = target.dataset.colecao || getSelectedColecao();
+
+        if (action === "edit-agenda") openEditAgendaModal(colecao, id);
+        if (action === "cancel-agenda") cancelarAgendamento(colecao, id);
+
+        if (action === "whatsapp-agenda") {
+            openWhatsAppForAppointment({
+                telefone: target.dataset.telefone || "",
+                nome: target.dataset.nome || "",
+                servico: target.dataset.servico || "",
+                data: target.dataset.data || "",
+                hora: target.dataset.hora || "",
+                profissional: target.dataset.profissional || "",
+            });
+        }
+
+        if (action === "schedule") {
+            const ymd = dataFiltro?.value || "";
+
+            if (!ymd) {
+                showNotification("Selecione a data para agendar.", "error");
+                return;
+            }
+
+            if (getSelectedColecao() === "todos") {
+                showNotification("Selecione um profissional para agendar.", "error");
+                return;
+            }
+
+            openNewAgendaModal(colecao, time);
+        }
+    });
+
+    async function openNewAgendaModal(colecao, time) {
+        const ymd = dataFiltro?.value || "";
+        if (!ymd) {
+            showNotification("Selecione a data para agendar.", "error");
+            return;
+        }
+
+        if (!colecao || colecao === "todos") {
+            showNotification("Selecione um profissional para agendar.", "error");
+            return;
+        }
+
+        const profLabel = getProfLabelByColecao(colecao);
+
+        mainModal.show({
+            title: `Novo agendamento - ${profLabel} • ${time}`,
+            body: `
+                <div class="form-grid">
+                    <div class="field">
+                        <label>Cliente</label>
+                        <input id="newCliente" placeholder="Nome completo do cliente" />
+                    </div>
+                    <div class="field">
+                        <label>Telefone</label>
+                        <input id="newTelefone" placeholder="(00) 00000-0000" />
+                    </div>
+                    <div class="field">
+                        <label>Serviço</label>
+                        <input id="newServico" placeholder="Clique para selecionar o serviço" />
+                        <input id="newTempoMin" type="hidden" value="${getStepMin()}" />
+                    </div>
+                    <div class="field">
+                        <label>Valor (R$)</label>
+                        <input id="newValor" type="number" step="0.01" />
+                    </div>
+                    <div class="field">
+                        <label>Forma de pagamento</label>
+                        <select id="newForma">
+                            <option value="">Selecione</option>
+                            ${PAYMENT_METHODS.map((m) => `<option value="${m}">${paymentMethodLabel(m)}</option>`).join("")}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label><input id="newRaclub" type="checkbox" /> Cliente é do JT Club</label>
+                    </div>
+                </div>
+            `,
+            buttons: [
+                { text: "Cancelar", class: "btn-light" },
+                {
+                    text: "Salvar",
+                    class: "btn-edit",
+                    onClick: async () => {
+                        const cliente = ($("#newCliente")?.value || "").trim();
+                        if (!cliente) {
+                            showNotification("Informe o nome do cliente.", "error");
+                            return false;
+                        }
+
+                        const telefone = ($("#newTelefone")?.value || "").trim();
+                        const servico = ($("#newServico")?.value || "").trim() || "Serviço";
+                        const valor = Number($("#newValor")?.value || 0);
+                        const forma = $("#newForma")?.value || "Outro";
+                        const raclub = !!$("#newRaclub")?.checked;
+                        const tempoMin = Number($("#newTempoMin")?.value || getStepMin()) || getStepMin();
+
+                        try {
+                            const av = await getDayAvailabilityForColecao(ymd, colecao);
+                            if (!av.aberto) {
+                                showNotification("Dia fechado para este profissional.", "error");
+                                return false;
+                            }
+
+                            const dayApps = await fetchAppointmentsDayForColecao(ymd, colecao);
+
+                            const ok = canPlaceServiceAtTime({
+                                startHH: time,
+                                serviceMin: tempoMin,
+                                dayStartHH: av.inicio,
+                                dayEndHH: av.fim,
+                                appointments: dayApps
+                            });
+
+                            if (!ok) {
+                                showNotification("Esse horário conflita com outro agendamento, bloqueio ou pausa.", "error");
+                                return false;
+                            }
+                        } catch (e) {
+                            console.error(e);
+                            showNotification("Não foi possível validar conflito de horário.", "error");
+                            return false;
+                        }
+
+                        const id = toKey(ymd, time);
+                        const refDoc = doc(db, colecao, id);
+                        const [firstName, ...rest] = cliente.split(" ");
+                        const lastName = rest.join(" ");
+
+                        try {
+                            await setDoc(
+                                refDoc,
+                                {
+                                    data: ymd,
+                                    hora: time,
+                                    profissional: profLabel,
+                                    clienteNomeCompleto: cliente,
+                                    clienteNome: firstName,
+                                    clienteSobrenome: lastName,
+                                    clienteTelefone: telefone,
+                                    telefoneCliente: telefone,
+                                    telefone: telefone,
+                                    phone: telefone,
+                                    servicoNome: servico,
+                                    servicoTempoMin: tempoMin,
+                                    valor: Number.isNaN(valor) ? 0 : valor,
+                                    pagamentoForma: forma,
+                                    raclub: { status: raclub ? "membro" : "nao" },
+                                    bloqueado: false,
+                                    updatedAt: serverTimestamp(),
+                                    createdAt: serverTimestamp(),
+                                },
+                                { merge: true }
+                            );
+                            await marcarOcupado(colecao, id, { data: ymd, hora: time, servicoTempoMin: tempoMin });
+
+                            showNotification("Agendamento criado!", "success");
+                            await buscarAgenda();
+                        } catch (err) {
+                            console.error(err);
+                            showNotification("Erro ao criar agendamento.", "error");
+                            return false;
+                        }
+                    },
+                },
+            ],
+        });
+
+        const servicoInput = $("#newServico");
+        const valorInput = $("#newValor");
+        const tempoInput = $("#newTempoMin");
+
+        if (servicoInput) {
+            servicoInput.setAttribute("readonly", "readonly");
+            servicoInput.style.cursor = "pointer";
+
+            const openPicker = (e) => {
+                e.preventDefault();
+                openServicosModal((serv) => {
+                    servicoInput.value = serv.nome || "";
+                    if (valorInput && serv.valor != null) valorInput.value = Number(serv.valor).toFixed(2);
+
+                    const t = Number(serv.tempoMin ?? serv.tempo ?? getStepMin()) || getStepMin();
+                    if (tempoInput) tempoInput.value = String(t);
+                });
+            };
+
+            servicoInput.addEventListener("click", openPicker);
+            servicoInput.addEventListener("focus", openPicker);
+        }
+    }
+
+    async function openEditAgendaModal(colecao, id) {
+        if (!colecao || !id) return;
+
+        try {
+            const refDoc = doc(db, colecao, id);
+            const snap = await getDoc(refDoc);
+
+            if (!snap.exists()) {
+                showNotification("Agendamento não encontrado.", "error");
+                return;
+            }
+
+            const v = snap.data() || {};
+            const fullName =
+                v.clienteNomeCompleto ||
+                [v.clienteNome, v.clienteSobrenome].filter(Boolean).join(" ") ||
+                v.cliente ||
+                "";
+
+            const telefone = v.clienteTelefone || v.telefoneCliente || v.phone || v.telefone || "";
+            const profAtual = getProfessionalByColecao(colecao);
+            const tempoMinAtual = Number(v.servicoTempoMin ?? v.tempoMin ?? getStepMin()) || getStepMin();
+
+            mainModal.show({
+                title: "Editar agendamento",
+                body: `
+                    <div class="form-grid">
+                        <div class="field">
+                            <label>Cliente</label>
+                            <input id="editCliente" value="${escapeHtml(fullName)}" />
+                        </div>
+                        <div class="field">
+                            <label>Telefone</label>
+                            <input id="editTelefone" value="${escapeHtml(telefone)}" placeholder="(00) 00000-0000" />
+                        </div>
+                        <div class="field">
+                            <label>Profissional</label>
+                            <select id="editProfissional">
+                                ${renderProfessionalOptions(colecao)}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>Serviço</label>
+                            <input id="editServico" value="${escapeHtml(v.servicoNome || "")}" placeholder="Clique para selecionar o serviço" />
+                            <input id="editTempoMin" type="hidden" value="${tempoMinAtual}" />
+                        </div>
+                        <div class="field">
+                            <label>Valor (R$)</label>
+                            <input id="editValor" type="number" step="0.01" value="${Number(v.valor ?? v.servicoValor ?? 0)}" />
+                        </div>
+                        <div class="field">
+                            <label>Forma de pagamento</label>
+                            <select id="editForma">
+                                <option value="">Selecione</option>
+                                ${PAYMENT_METHODS.map((m) => `<option value="${m}" ${v.pagamentoForma === m ? "selected" : ""}>${paymentMethodLabel(m)}</option>`).join("")}
+                            </select>
+                        </div>
+                        <div class="field">
+                            <label>
+                                <input id="editRaclub" type="checkbox" ${v?.raclub?.status === "membro" ? "checked" : ""}/>
+                                Cliente é do JT Club
+                            </label>
+                        </div>
+                    </div>
+                `,
+                buttons: [
+                    { text: "Cancelar", class: "btn-light" },
+                    {
+                        text: "Salvar",
+                        class: "btn-edit",
+                        onClick: async () => {
+                            const cliente = ($("#editCliente")?.value || "").trim();
+                            if (!cliente) {
+                                showNotification("Informe o nome do cliente.", "error");
+                                return false;
+                            }
+
+                            const selectedProfId = $("#editProfissional")?.value || profAtual?.id || "";
+                            const novaColecao = getColecaoByProfId(selectedProfId) || colecao;
+                            const novoProfLabel = getProfLabelByColecao(novaColecao);
+                            const telefoneEdit = ($("#editTelefone")?.value || "").trim();
+                            const servico = ($("#editServico")?.value || "").trim() || "Serviço";
+                            const valor = Number($("#editValor")?.value || 0);
+                            const forma = $("#editForma")?.value || "Outro";
+                            const raclub = !!$("#editRaclub")?.checked;
+                            const tempoMin = Number($("#editTempoMin")?.value || getStepMin()) || getStepMin();
+                            const ymd = dataFiltro?.value || v.data || "";
+                            const startHH = (v.hora || "").trim();
+
+                            if (!ymd) {
+                                showNotification("Selecione a data.", "error");
+                                return false;
+                            }
+
+                            try {
+                                const av = await getDayAvailabilityForColecao(ymd, novaColecao);
+                                if (!av.aberto) {
+                                    showNotification("Dia fechado para este profissional.", "error");
+                                    return false;
+                                }
+
+                                const dayApps = await fetchAppointmentsDayForColecao(ymd, novaColecao);
+                                const filtered = dayApps.filter((x) => !(x.id === id && x.colecao === colecao));
+
+                                const ok = canPlaceServiceAtTime({
+                                    startHH,
+                                    serviceMin: tempoMin,
+                                    dayStartHH: av.inicio,
+                                    dayEndHH: av.fim,
+                                    appointments: filtered
+                                });
+
+                                if (!ok) {
+                                    showNotification("Esse agendamento conflita com outro horário, bloqueio ou pausa.", "error");
+                                    return false;
+                                }
+                            } catch (e) {
+                                console.error(e);
+                                showNotification("Não foi possível validar conflito de horário.", "error");
+                                return false;
+                            }
+
+                            const [firstName, ...rest] = cliente.split(" ");
+                            const lastName = rest.join(" ");
+
+                            const payload = {
+                                ...v,
+                                data: ymd,
+                                hora: startHH,
+                                profissional: novoProfLabel,
+                                clienteNomeCompleto: cliente,
+                                clienteNome: firstName,
+                                clienteSobrenome: lastName,
+                                clienteTelefone: telefoneEdit,
+                                telefoneCliente: telefoneEdit,
+                                telefone: telefoneEdit,
+                                phone: telefoneEdit,
+                                servicoNome: servico,
+                                servicoTempoMin: tempoMin,
+                                valor: Number.isNaN(valor) ? 0 : valor,
+                                pagamentoForma: forma,
+                                raclub: { status: raclub ? "membro" : "nao" },
+                                bloqueado: false,
+                                updatedAt: serverTimestamp(),
+                            };
+
+                            try {
+                                if (novaColecao !== colecao) {
+                                    await setDoc(doc(db, novaColecao, id), payload, { merge: true });
+                                    await deleteDoc(doc(db, colecao, id));
+                                    await liberarHorario(colecao, id);
+                                } else {
+                                    await updateDoc(doc(db, colecao, id), payload);
+                                }
+                                await marcarOcupado(novaColecao, id, payload);
+
+                                showNotification("Agendamento atualizado!", "success");
+                                await buscarAgenda();
+                            } catch (err) {
+                                console.error(err);
+                                showNotification("Erro ao atualizar agendamento.", "error");
+                                return false;
+                            }
+                        },
+                    },
+                ],
+            });
+
+            const servicoInput = $("#editServico");
+            const valorInput = $("#editValor");
+            const tempoInput = $("#editTempoMin");
+
+            if (servicoInput) {
+                servicoInput.setAttribute("readonly", "readonly");
+                servicoInput.style.cursor = "pointer";
+
+                const openPicker = (e) => {
+                    e.preventDefault();
+                    openServicosModal((serv) => {
+                        servicoInput.value = serv.nome || "";
+                        if (valorInput && serv.valor != null) valorInput.value = Number(serv.valor).toFixed(2);
+
+                        const t = Number(serv.tempoMin ?? serv.tempo ?? getStepMin()) || getStepMin();
+                        if (tempoInput) tempoInput.value = String(t);
+                    });
+                };
+
+                servicoInput.addEventListener("click", openPicker);
+                servicoInput.addEventListener("focus", openPicker);
+            }
+        } catch (err) {
+            console.error(err);
+            showNotification("Erro ao abrir edição do agendamento.", "error");
+        }
+    }
+
+    function cancelarAgendamento(colecao, id) {
+        if (!colecao || !id) return;
+
+        mainModal.show({
+            title: "Cancelar agendamento",
+            body: `<p>Deseja remover este agendamento/bloqueio?</p>`,
+            buttons: [
+                { text: "Voltar", class: "btn-light" },
+                {
+                    text: "Remover",
+                    class: "btn-del",
+                    onClick: async () => {
+                        try {
+                            await deleteDoc(doc(db, colecao, id));
+                            await liberarHorario(colecao, id);
+                            showNotification("Agendamento removido!", "success");
+                            await buscarAgenda();
+                        } catch (err) {
+                            console.error(err);
+                            showNotification("Erro ao remover agendamento.", "error");
+                            return false;
+                        }
+                    },
+                },
+            ],
+        });
+    }
+
+    bloquearBtn?.addEventListener("click", async () => {
+        const time = horaFiltro?.value;
+        const ymd = dataFiltro?.value;
+        const colecao = getSelectedColecao();
+
+        if (!ymd) {
+            showNotification("Selecione a data.", "error");
+            return;
+        }
+
+        if (colecao === "todos") {
+            showNotification("Selecione um profissional para bloquear horário.", "error");
+            return;
+        }
+
+        if (!time) {
+            showNotification("Selecione um horário no filtro para bloquear.", "error");
+            return;
+        }
+
+        try {
+            const av = await getDayAvailabilityForColecao(ymd, colecao);
+            if (!av.aberto) {
+                showNotification("Dia fechado para este profissional.", "error");
+                return;
+            }
+
+            const ok = canPlaceServiceAtTime({
+                startHH: time,
+                serviceMin: getStepMin(),
+                dayStartHH: av.inicio,
+                dayEndHH: av.fim,
+                appointments: await fetchAppointmentsDayForColecao(ymd, colecao)
+            });
+
+            if (!ok) {
+                showNotification("Esse horário não pode ser bloqueado porque conflita com agendamento, pausa ou horário fora do expediente.", "error");
+                return;
+            }
+        } catch (e) {
+            console.error(e);
+            showNotification("Não foi possível validar o bloqueio.", "error");
+            return;
+        }
+
+        const refDoc = doc(db, colecao, toKey(ymd, time));
+
+        try {
+            await setDoc(refDoc, {
+                data: ymd,
+                hora: time,
+                profissional: getProfLabelByColecao(colecao),
+                bloqueado: true,
+                servicoTempoMin: getStepMin(),
+                updatedAt: serverTimestamp(),
+                createdAt: serverTimestamp(),
+            }, { merge: true });
+            await marcarOcupado(colecao, refDoc.id, { data: ymd, hora: time, servicoTempoMin: getStepMin() });
+
+            showNotification("Horário bloqueado!", "success");
+            await buscarAgenda();
+        } catch (err) {
+            console.error(err);
+            showNotification("Erro ao bloquear horário.", "error");
+        }
+    });
+
+    desbloquearBtn?.addEventListener("click", async () => {
+        const time = horaFiltro?.value;
+        const ymd = dataFiltro?.value;
+        const colecao = getSelectedColecao();
+
+        if (!ymd) {
+            showNotification("Selecione a data.", "error");
+            return;
+        }
+
+        if (colecao === "todos") {
+            showNotification("Selecione um profissional para desbloquear horário.", "error");
+            return;
+        }
+
+        if (!time) {
+            showNotification("Selecione um horário no filtro para desbloquear.", "error");
+            return;
+        }
+
+        const refDoc = doc(db, colecao, toKey(ymd, time));
+
+        try {
+            const snap = await getDoc(refDoc);
+            if (!snap.exists()) {
+                showNotification("Não existe bloqueio/agendamento nesse horário.", "error");
+                return;
+            }
+
+            const v = snap.data() || {};
+            if (!v.bloqueado) {
+                showNotification("Esse horário não está bloqueado.", "error");
+                return;
+            }
+
+            await deleteDoc(refDoc);
+            await liberarHorario(colecao, refDoc.id);
+            showNotification("Horário desbloqueado!", "success");
+            await buscarAgenda();
+        } catch (err) {
+            console.error(err);
+            showNotification("Erro ao desbloquear horário.", "error");
+        }
+    });
+
+    (async () => {
+        try {
+            populateProfessionalSelects?.();
+            await fillHoraFiltroDynamic({ keepSelection: true });
+            await buscarAgenda();
+        } catch (err) {
+            console.error("Erro ao iniciar agenda:", err);
+        }
+    })();
+}

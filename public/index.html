@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description"
+        content="Agende seu horário na Barbearia JTech em Itamaraju - BA. Cortes, atendimento profissional e praticidade." />
+    <meta name="theme-color" content="#080b12" />
+    <title>Barbearia JTech | Seu estilo, do seu jeito</title>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap"
+        rel="stylesheet" />
+    <!-- Boxicons -->
+    <link href="https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css" rel="stylesheet" />
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+    <!-- Header -->
+    <header>
+        <nav>
+            <a href="#home" class="logo" aria-label="Barbearia JTech, início">
+                <img src="./assets/logo-jtech.png" alt="Logo JTech" class="logo-img">
+            </a>
+            <ul class="nav-links" id="navLinks">
+                <li><a href="#home">Início</a></li>
+                <li><a href="#services">Serviços</a></li>
+                <li><a href="#testimonials">Depoimentos</a></li>
+                <li><a href="#contact">Agendamento</a></li>
+            </ul>
+            <button class="menu-toggle" type="button" aria-label="Abrir menu" aria-controls="navLinks"
+                aria-expanded="false">
+                <i class='bx bx-menu' aria-hidden="true"></i>
+            </button>
+        </nav>
+    </header>
+
+    <!-- Hero -->
+    <section class="hero" id="home">
+        <div class="hero-content">
+            <p class="hero-eyebrow">BARBEARIA JTECH <span>•</span> ITAMARAJU</p>
+            <h1>Seu estilo começa<br />na cadeira certa.</h1>
+            <p class="hero-description">Um bom corte muda o visual. O atendimento certo muda a experiência.</p>
+            <div class="hero-actions">
+                <a class="cta-button" href="#contact">Agende seu horário <i class='bx bx-right-arrow-alt'
+                        aria-hidden="true"></i></a>
+                <a class="hero-link" href="#services">Conheça os serviços</a>
+            </div>
+            <div class="hero-note"><i class='bx bx-map' aria-hidden="true"></i> Itamaraju — BA</div>
+        </div>
+    </section>
+
+
+
+    <!-- Services -->
+    <section class="services" id="services">
+        <div class="services-content container">
+            <h2>Serviços</h2>
+            <p>Do corte clássico ao acabamento, escolha o cuidado ideal para o seu estilo.</p>
+        </div>
+
+        <section class="haircuts">
+            <div class="haircut" data-aos="fade-up" data-aos-delay="250">
+            <img src="./assets/corte-classico-barbeiro.png" alt="Barbeiro fazendo um corte clássico com máquina" class="service-img">
+                <div class="haircut-info">
+                <strong>Corte à máquina</strong>
+                <span>R$ 35,00</span>
+                </div>
+            </div>
+
+            <div class="haircut" data-aos="fade-up" data-aos-delay="400">
+            <img src="./assets/corte-tesoura.png" alt="Barbeiro fazendo um corte com tesoura" class="service-img">
+                <div class="haircut-info">
+                <strong>Corte à tesoura</strong>
+                <span>R$ 50,00</span>
+                </div>
+            </div>
+
+            <div class="haircut" data-aos="fade-up" data-aos-delay="400">
+            <img src="./assets/corte5.png" alt="Detalhe de acabamento de sobrancelha" class="service-img">
+                <div class="haircut-info">
+                    <strong>Sobrancelha</strong>
+                <span>R$ 10,00</span>
+                </div>
+            </div>
+
+            <div class="haircut" data-aos="fade-up" data-aos-delay="450">
+                <img src="./assets/barba.png" alt="Cliente com barba alinhada na barbearia" class="service-img">
+                <div class="haircut-info">
+                    <strong>Barba</strong>
+                    <span>R$ 20,00</span>
+                </div>
+            </div>
+
+            <div class="haircut" data-aos="fade-up" data-aos-delay="500">
+                <img src="./assets/pigmentacao.png" alt="Barbeiro aplicando tintura no cabelo do cliente" class="service-img">
+                <div class="haircut-info">
+                    <strong>Pigmentação</strong>
+                    <span>R$ 40,00</span>
+                </div>
+            </div>
+
+
+
+        </section>
+    </section>
+
+
+    <!-- CTA -->
+    <section class="cta-section" id="contact">
+        <p class="section-eyebrow">SEU PRÓXIMO CORTE</p>
+        <h2 class="section-title">Seu horário, do seu jeito.</h2>
+        <p class="cta-subtitle">Escolha um profissional e encontre o melhor horário para você.</p>
+
+        <div class="haircuts" id="profissionaisContainer">
+            <!-- Profissionais carregados do Firebase -->
+            <div class="haircut" style="max-width:520px;">
+                <div class="haircut-info">
+                    <strong>Carregando profissionais...</strong>
+                </div>
+            </div>
+        </div>
+
+        <div class="container">
+            <div class="cta-content">
+                <div class="contact-info">
+                    <div class="info-item">
+                        <i class='bx bx-time'></i>
+                        <span><span id="horarioFuncionamentoTexto">Seg-Sáb: 9h às 19h</span></span>
+
+                    </div>
+                    <div class="info-item">
+                        <i class='bx bx-phone'></i>
+                        <span>(73) 90000-0000</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Testimonials -->
+    <section class="testimonials" id="testimonials">
+        <div class="container">
+            <h2 class="section-title">O que nossos clientes dizem</h2>
+            <div class="testimonials-grid">
+                <div class="testimonial-card">
+                    <div class="stars">★★★★★</div>
+                    <p class="testimonial-text">"Fui muito bem atendido e o corte ficou do jeito que eu queria.
+                        Recomendo!"</p>
+                    <p class="testimonial-author">- Alex</p>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">★★★★★</div>
+                    <p class="testimonial-text">"Ambiente agradável, atendimento atencioso e muito cuidado nos
+                        detalhes. Gostei bastante do resultado."</p>
+                    <p class="testimonial-author">- Henrique</p>
+                </div>
+                <div class="testimonial-card">
+                    <div class="stars">★★★★★</div>
+                    <p class="testimonial-text">"Serviço de qualidade, preço justo e ótimo atendimento. Já sou cliente
+                        há mais de três anos."</p>
+                    <p class="testimonial-author">- Maciel</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Map -->
+    <section class="map-section" aria-labelledby="mapTitle">
+        <div class="container">
+            <div class="map-heading">
+                <p class="section-eyebrow">ESTAMOS EM ITAMARAJU</p>
+                <h2 class="iframe-title" id="mapTitle">Venha nos conhecer</h2>
+            </div>
+    <iframe class="map-frame"
+        src="https://maps.google.com/maps?q=Itamaraju%2C%20BA%2C%20Brasil&output=embed"
+        title="Localização da Barbearia JTech no mapa" width="600" height="450" style="border:0;" allowfullscreen="" loading="lazy"
+        referrerpolicy="no-referrer-when-downgrade"></iframe>
+        </div>
+    </section>
+
+
+
+    <!-- Footer -->
+    <footer>
+        <div class="social-links">
+            <a href="https://www.instagram.com/jtechbarbearia/" target="_blank" rel="noopener noreferrer"
+                aria-label="Instagram da Barbearia JTech"><i class='bx bxl-instagram' aria-hidden="true"></i></a>
+            <a href="https://wa.me/5573900000000" target="_blank" rel="noopener noreferrer"
+                aria-label="Fale com a barbearia pelo WhatsApp"><i class='bx bxl-whatsapp' aria-hidden="true"></i></a>
+        </div>
+        <p>&copy; 2026 Barbearia JTech. Todos os direitos reservados.</p>
+        <p>📍 Itamaraju - BA | ☎️ (73) 90000-0000</p>
+    </footer>
+
+    <!-- WhatsApp Float -->
+    <a href="https://wa.me/5573900000000" class="whatsapp-float" target="_blank" rel="noopener noreferrer"
+        aria-label="Agende pelo WhatsApp">
+        <i class='bx bxl-whatsapp' aria-hidden="true"></i>
+    </a>
+
+    <!-- ===== MODAIS ===== -->
+
+    <!-- 1) Modal de Agendamento -->
+    <div id="modal" class="modal" aria-hidden="true">
+        <div class="modal-content" role="dialog" aria-modal="true">
+            <button type="button" class="close" onclick="fecharModal('modal')" aria-label="Fechar">&times;</button>
+            <h2>Escolha seu horário</h2>
+
+            <label for="data">Data:</label>
+            <input type="date" id="data" required />
+
+            <label for="servicoDisplay">Serviço:</label>
+            <input id="servicoDisplay" type="text" placeholder="Selecionar..." readonly />
+
+            <label for="hora">Hora:</label>
+            <select id="hora">
+                <option value="">Escolha uma data para ver os horários</option>
+            </select>
+            <p id="horaStatus" class="field-hint" aria-live="polite">Os horários aparecem após selecionar uma data.</p>
+
+            <button id="confirmarBtn">Agendar</button>
+        </div>
+    </div>
+
+    <!-- 2) Modal do Cliente -->
+    <div id="modalCliente" class="modal" aria-hidden="true">
+        <div class="modal-content" role="dialog" aria-modal="true">
+            <button type="button" class="close" onclick="fecharModal('modalCliente')" aria-label="Fechar">&times;</button>
+            <h2>Seus dados</h2>
+
+            <label for="nomeCliente">Nome</label>
+            <input type="text" id="nomeCliente" placeholder="Ex.: João" required />
+
+            <label for="sobrenomeCliente">Sobrenome</label>
+            <input type="text" id="sobrenomeCliente" placeholder="Ex.: Silva" required />
+
+            <label for="telefoneCliente">Telefone (com DDD)</label>
+            <input type="tel" id="telefoneCliente" placeholder="(73) 90000-0000" inputmode="tel"
+                autocomplete="tel-national" required />
+
+            <button type="button" id="btnClienteContinuar">Continuar</button>
+        </div>
+    </div>
+
+    <!-- 3) Modal JT Club -->
+    <div id="modalJTClub" class="modal" aria-hidden="true">
+        <div class="modal-content" role="dialog" aria-modal="true">
+            <div class="raclub-head">
+                <h2>JT Club • Assinatura</h2>
+                <p class="muted">Economize no seu corte com benefícios exclusivos:</p>
+                <ul class="raclub-list">
+                    <li>✂️ Cortes ilimitados</li>
+                    <li>🧴 10% OFF em produtos selecionados</li>
+                    <li>🗓️ Prioridade no agendamento</li>
+                </ul>
+                <p class="muted">Demonstração: a assinatura não está conectada a um checkout real.</p>
+            </div>
+
+            <div class="row-actions">
+                <button type="button" id="btnJTJaMembro" class="btn-secondary">Já faço parte</button>
+                <button type="button" id="btnJTNao" class="btn-secondary">Agora não</button>
+                <button type="button" id="btnJTAssinar" class="btn-primary">Quero fazer parte</button>
+            </div>
+
+            <div id="raForm" class="hidden" aria-hidden="true"></div>
+        </div>
+    </div>
+
+
+
+    <!-- ===== Modal de Serviço ===== -->
+    <div id="servicoModal" class="modal" aria-hidden="true">
+        <div class="modal-content svc-sheet" role="dialog" aria-modal="true">
+            <div class="svc-header">
+                <div class="svc-title">Selecionar serviço</div>
+                <button type="button" class="svc-close" onclick="fecharModal('servicoModal')"
+                    aria-label="Fechar">&times;</button>
+            </div>
+
+            <div class="svc-search">
+                <i class='bx bx-search' aria-hidden="true"></i>
+                <input id="svcSearch" type="search" placeholder="Digite para procurar um serviço..." autocomplete="off"
+                    spellcheck="false" />
+            </div>
+
+            <div class="svc-list" id="servicoLista"></div>
+
+            <div class="svc-actions">
+                <button id="servicoCancelar" class="svc-btn svc-btn-ghost">Cancelar</button>
+                <button id="servicoConfirmarWpp" class="svc-btn svc-btn-dark">Confirmar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ===== Modal de Confirmação ===== -->
+    <div id="modalConfirmacao" class="modal" aria-hidden="true">
+        <div class="modal-content" role="dialog" aria-modal="true">
+            <button type="button" class="close" onclick="fecharModal('modalConfirmacao')"
+                aria-label="Fechar">&times;</button>
+            <h2>Agendamento Confirmado</h2>
+            <div id="confResumo" class="conf-resumo"></div>
+            <button type="button" id="btnOkConfirmacao">OK</button>
+        </div>
+    </div>
+
+    <script type="module" src="./script.js"></script>
+</body>
+
+</html>

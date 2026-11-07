@@ -1,0 +1,107 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // E-mails que podem usar o painel (o mesmo vale em public/Adm/firebase.js → EMAILS_ADMIN)
+    function emailsAdmin() {
+      return ['teste@jtech.teste'];
+    }
+
+    function isAdmin() {
+      return request.auth != null
+        && request.auth.token.email in emailsAdmin();
+    }
+
+    function isReservationCollection(name) {
+      return name is string && name.matches('^reservas_[a-z0-9_]+$');
+    }
+
+    function validBooking(data, documentId) {
+      return data.keys().hasAll([
+          'data', 'hora', 'profissional', 'profissionalNome',
+          'clienteNome', 'clienteSobrenome', 'clienteNomeCompleto',
+          'clienteNomeLower', 'clienteSobrenomeLower', 'clienteTelefone',
+          'servicoNome', 'servicoValor', 'servicoTempoMin', 'createdAt'
+        ])
+        && data.data is string
+        && data.data.matches('^\\d{4}-\\d{2}-\\d{2}$')
+        && data.hora is string
+        && data.hora.matches('^([01]\\d|2[0-3]):[0-5]\\d$')
+        && documentId == data.data + '_' + data.hora
+        && data.clienteNome is string
+        && data.clienteNome.size() > 0
+        && data.clienteNome.size() <= 80
+        && data.clienteSobrenome is string
+        && data.clienteSobrenome.size() > 0
+        && data.clienteSobrenome.size() <= 100
+        && data.clienteNomeCompleto is string
+        && data.clienteNomeCompleto.size() <= 181
+        && data.clienteTelefone is string
+        && data.clienteTelefone.matches('^[0-9]{10,13}$')
+        && data.servicoNome is string
+        && data.servicoNome.size() > 0
+        && data.servicoNome.size() <= 100
+        && data.servicoValor is number
+        && data.servicoValor >= 0
+        && data.servicoTempoMin is number
+        && data.servicoTempoMin >= 5
+        && data.servicoTempoMin <= 480
+        && data.createdAt is timestamp
+        && (!('bloqueado' in data) || data.bloqueado == false);
+    }
+
+    // Horário ocupado criado pelo site junto com a reserva: só colecao, data, hora e duração,
+    // com o mesmo id da reserva, e a reserva precisa existir no fim da mesma gravação.
+    function validOcupado(id, d) {
+      return d.keys().hasOnly(['colecao', 'data', 'hora', 'duracaoMin'])
+        && d.keys().hasAll(['colecao', 'data', 'hora', 'duracaoMin'])
+        && isReservationCollection(d.colecao)
+        && d.data is string
+        && d.hora is string
+        && id == d.colecao + '__' + d.data + '_' + d.hora
+        && existsAfter(/databases/$(database)/documents/$(d.colecao)/$(d.data + '_' + d.hora))
+        && getAfter(/databases/$(database)/documents/$(d.colecao)/$(d.data + '_' + d.hora)).data.servicoTempoMin == d.duracaoMin;
+    }
+
+    match /config/{document=**} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /servicos/{documentId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /profissionais/{professionalId} {
+      allow read: if true;
+      allow write: if isAdmin();
+
+      match /excecoes/{exceptionId} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+    }
+
+    // Horários ocupados: públicos, sem dados pessoais. É o que o site lê para saber o que está livre.
+    match /horarios_ocupados/{id} {
+      allow read: if true;
+      allow create: if isAdmin() || validOcupado(id, request.resource.data);
+      allow update, delete: if isAdmin();
+    }
+
+    // Reservas (reservas_<profissional>): nome e telefone do cliente. Só o admin lê.
+    // O site só pode CRIAR uma reserva válida, junto com o horário ocupado dela.
+    match /{collectionName}/{documentId} {
+      allow read: if isAdmin();
+      allow create: if isAdmin()
+        || (isReservationCollection(collectionName)
+            && validBooking(request.resource.data, documentId)
+            && existsAfter(/databases/$(database)/documents/horarios_ocupados/$(collectionName + '__' + documentId)));
+      allow update, delete: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if isAdmin();
+    }
+  }
+}
