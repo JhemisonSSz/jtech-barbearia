@@ -1329,8 +1329,11 @@ textarea::placeholder {
     padding-left: calc(var(--sidebar-width) + 20px);
   }
 
+  /* Ocupa todo o espaço ao lado do menu (sem o limite de 1120px),
+     para acompanhar telas largas e zoom reduzido */
   .page-main {
     margin-left: var(--sidebar-width);
+    max-width: none;
   }
 }
 
