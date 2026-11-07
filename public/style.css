@@ -590,6 +590,27 @@ footer p {
   font-size: .8rem;
 }
 
+/* Link discreto para o painel do dono */
+.link-painel {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 6px 14px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: .78rem;
+  text-decoration: none;
+  transition: color .2s ease, border-color .2s ease;
+}
+
+.link-painel:hover,
+.link-painel:focus-visible {
+  color: var(--blue-light);
+  border-color: var(--blue);
+}
+
 .whatsapp-float {
   position: fixed;
   z-index: 900;
